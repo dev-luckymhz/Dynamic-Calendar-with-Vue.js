@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Dynamic Calendar</title>
+    <link rel="stylesheet" href="./style.css">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon/fonts/remixicon.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+
+<body>
+    <div class="container-main">
+        <div id="app" class="calendar-page">
+            <h1>{{ formattedDate }}</h1>
+            <p>Availability Calendar for Mr. X</p>
+
+            <!-- Controls -->
+            <div class="controls">
+                <label>
+                    Select Month:
+                    <input type="month" v-model="selectedMonth" @change="updateCalendar">
+                </label>
+                <label>
+                    Show Availability:
+                    <input type="checkbox" v-model="showAvailability" checked>
+                </label>
+                <label v-if="showAvailability">
+                    Search Day or Number:
+                    <input type="text" v-model="searchQuery" @input="filterSearchResults"
+                        placeholder="Type day or number...">
+                </label>
+            </div>
+
+            <!-- New Control for Date Range and Openness -->
+            <div class="controls" v-if="showAvailability">
+                <label>
+                    Begin Date:
+                    <input type="date" v-model="beginDate" @change="validateDates">
+                </label>
+                <label>
+                    End Date:
+                    <input type="date" v-model="endDate" @change="validateDates">
+                </label>
+                <label>
+                    Set Dates as:
+                    <select v-model="dateStatus">
+                        <option value="open">Available</option>
+                        <option value="closed">Unavailable</option>
+                    </select>
+                </label>
+                <label>
+                    Include Weekend:
+                    <input type="checkbox" v-model="includeWeekend">
+                </label>
+                <button @click="applyChanges">Apply Changes</button>
+            </div>
+
+            <!-- Toggle Visual Changes Checkbox -->
+            <div class="controls" v-if="showAvailability">
+                <label>
+                    Enable Visual Toggle:
+                    <input type="checkbox" v-model="visualToggle">
+                </label>
+            </div>
+
+            <!-- Search Results -->
+            <ul v-if="searchResults.length" class="search-results">
+                <li v-for="(result, index) in searchResults.slice(0, 4)" :key="index" @click="toggleAvailability(result)">
+                    {{ result.name }} {{ result.day }}
+                    <i :class="['icon', result.isAvailable ? 'ri-check-line' : 'ri-close-line']"
+                        :style="{ color: result.isAvailable ? 'lightgreen' : 'red', display: showAvailability ? 'block' : 'none' }"></i>
+                </li>
+            </ul>
+
+            <!-- Calendar -->
+            <ul class="calendar-container">
+                <li v-for="(day, index) in days" :key="index" :class="{ open: day.isAvailable, closed: !day.isAvailable }"
+                    @click="visualToggle && toggleOpenness(day)">
+                    <time :datetime="day.date">{{ day.day }}</time>
+                    <div class="day-name">{{ day.name }}</div>
+                    <i v-if="showAvailability" :class="['icon', day.isAvailable ? 'ri-check-line' : 'ri-close-line']"
+                        :style="{ color: day.isAvailable ? 'lightgreen' : 'red', backgroundColor: day.isAvailable ? 'rgba(144, 238, 144, 0.5)' : 'rgba(255, 99, 71, 0.5)' }"></i>
+                    {{ day.availability }}
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.5.13/vue.global.min.js"></script>
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                const currentMonth = new Date().toISOString().slice(0, 7); // Get current month in YYYY-MM format
+                return {
+                    selectedMonth: currentMonth,
+                    days: [],
+                    showAvailability: true,
+                    searchQuery: '',
+                    searchResults: [],
+                    searchTimeout: null,
+                    beginDate: '',
+                    endDate: '',
+                    dateStatus: 'open', // open/closed
+                    includeWeekend: false,
+                    visualToggle: false,
+                };
+            },
+            computed: {
+                formattedDate() {
+                    const [year, month] = this.selectedMonth.split('-');
+                    const date = new Date(year, month - 1);
+                    return date.toLocaleString('default', { month: 'long', year: 'numeric' });
+                },
+            },
+            methods: {
+                updateCalendar() {
+                    const [year, month] = this.selectedMonth.split('-');
+                    const daysInMonth = new Date(year, month, 0).getDate();
+                    const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+                    this.days = Array.from({ length: daysInMonth }, (_, i) => {
+                        const day = i + 1;
+                        const date = new Date(year, month - 1, day);
+                        const name = weekdays[date.getDay()];
+                        const isAvailable = date.getDay() !== 0 && date.getDay() !== 6;
+
+                        return {
+                            day,
+                            name,
+                            date: `${year}-${month}-${String(day).padStart(2, '0')}`,
+                            availability: isAvailable ? 'Available' : 'Unavailable',  // Dynamically setting availability
+                            isAvailable,
+                        };
+                    });
+                },
+
+                filterSearchResults() {
+                    const query = this.searchQuery.toLowerCase();
+
+                    if (!query) {
+                        this.searchResults = [];
+                        return;
+                    }
+
+                    this.searchResults = this.days.filter(day => {
+                        return (
+                            day.name.toLowerCase().includes(query) ||
+                            String(day.day).includes(query)
+                        );
+                    });
+
+                    if (this.searchTimeout) {
+                        clearTimeout(this.searchTimeout);
+                    }
+
+                    this.searchTimeout = setTimeout(() => {
+                        this.searchResults = [];
+                    }, 5000);
+                },
+
+                toggleAvailability(result) {
+                    const dayIndex = this.days.findIndex(day => day.day === result.day && day.name === result.name);
+                    if (dayIndex !== -1) {
+                        const day = this.days[dayIndex];
+                        day.isAvailable = !day.isAvailable;
+                        day.availability = day.isAvailable ? 'Available' : 'Unavailable'; // Update availability dynamically
+                        this.logAction(day.date, 'toggle');
+                    }
+                },
+
+                applyChanges() {
+                    const begin = new Date(this.beginDate);
+                    const end = new Date(this.endDate);
+
+                    if (end < begin) {
+                        this.beginDate = '';
+                        this.logAction('Invalid Date Range', 'reset');
+                    }
+
+                    const daysToUpdate = this.days.filter(day => {
+                        const dayDate = new Date(day.date);
+                        return begin <= dayDate && dayDate <= end;
+                    });
+
+                    daysToUpdate.forEach(day => {
+                        if (this.includeWeekend || day.isAvailable) {
+                            day.isAvailable = this.dateStatus === 'open';
+                            day.availability = day.isAvailable ? 'Available' : 'Unavailable';  // Update availability dynamically
+                        }
+                    });
+
+                    this.logAction('Date Range Applied', { beginDate: this.beginDate, endDate: this.endDate, status: this.dateStatus });
+                },
+
+                toggleOpenness(day) {
+                    if (!this.visualToggle) return;
+                    day.isAvailable = !day.isAvailable;
+                    day.availability = day.isAvailable ? 'Available' : 'Unavailable'; // Update availability dynamically
+                    this.logAction(day.date, 'toggle');
+                },
+
+                validateDates() {
+                    const begin = new Date(this.beginDate);
+                    const end = new Date(this.endDate);
+
+                    if (end < begin) {
+                        this.beginDate = '';
+                        console.log(JSON.stringify({ date: 'Invalid date range', action: 'reset' }));
+                    }
+                },
+
+                logAction(date, action) {
+                    console.log(JSON.stringify({ date, action }));
+                },
+            },
+            mounted() {
+                this.updateCalendar();
+            },
+        }).mount('#app');
+    </script>
+</body>
+
+</html>
